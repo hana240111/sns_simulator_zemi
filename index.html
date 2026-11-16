@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TikTok Style SNS Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans JP', sans-serif; background: #000; color: #fff; overflow: hidden; user-select: none; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .snap-y-mandatory { scroll-snap-type: y mandatory; }
+        .snap-start { scroll-snap-align: start; }
+        @keyframes spin-slow { to { transform: rotate(360deg); } }
+        .animate-spin-disc { animation: spin-slow 5s linear infinite; }
+        @keyframes heart-pop { 50% { transform: scale(1.3); } }
+        .animate-heart { animation: heart-pop 0.3s ease-in-out; }
+        .video-overlay { background: linear-gradient(0deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.3) 40%, transparent 70%, rgba(0,0,0,0.4) 100%); }
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translate(-50%, 20px); }
+            15%, 85% { opacity: 1; transform: translate(-50%, 0); }
+            100% { opacity: 0; transform: translate(-50%, -20px); }
+        }
+        .toast-animate { animation: fadeInOut 2.5s forwards; }
+    </style>
+</head>
+<body class="h-screen w-screen flex justify-center items-center bg-gray-950">
+
+    <div id="app" class="relative w-full max-w-md h-full bg-black overflow-hidden flex flex-col shadow-2xl md:rounded-3xl md:h-[92vh] md:border md:border-gray-800">
+
+        <!-- 1. ユーザー登録画面 -->
+        <div id="screen-register" class="absolute inset-0 z-50 flex flex-col justify-between p-6 bg-gradient-to-b from-gray-900 via-black to-gray-900">
+            <div class="mt-12 text-center">
+                <div class="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-tr from-cyan-400 to-pink-500 mb-4 shadow-lg shadow-pink-500/30">
+                    <i class="fa-solid fa-music text-4xl text-white"></i>
+                </div>
+                <h1 class="text-3xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-white to-pink-500">TokSim</h1>
+                <p class="text-xs text-gray-400 mt-2">TikTok風 SNSシミュレーター</p>
+            </div>
+
+            <div class="my-auto bg-gray-900/80 p-6 rounded-2xl border border-gray-800 backdrop-blur-md">
+                <h2 class="text-lg font-bold text-gray-100 mb-2 text-center">ユーザー登録</h2>
+                <p class="text-xs text-gray-400 mb-6 text-center">アルファベット・数字・ひらがな・カタカナ・漢字<br>（最大10文字）</p>
+                <form onsubmit="handleRegister(event)" class="space-y-4">
+                    <div class="relative">
+                        <input type="text" id="username-input" maxlength="10" required placeholder="ユーザー名を入力" class="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-pink-500 text-center font-bold tracking-wide">
+                        <span id="char-count" class="absolute right-3 top-3.5 text-xs text-gray-500">0/10</span>
+                        <p id="error-msg" class="text-xs text-pink-500 mt-2 hidden text-center"></p>
+                    </div>
+                    <button type="submit" class="w-full py-3.5 bg-gradient-to-r from-cyan-500 to-pink-500 text-white font-bold rounded-xl shadow-lg shadow-pink-500/20 active:scale-95 transition hover:opacity-90">シミュレーションを開始</button>
+                </form>
+            </div>
+            <div class="text-center text-xs text-gray-600 mb-4">© 2026 TokSim App Inc.</div>
+        </div>
+
+        <!-- ヘッダー -->
+        <header id="app-header" class="absolute top-0 inset-x-0 z-30 flex items-center justify-between px-4 py-3 text-white hidden pointer-events-none">
+            <button class="w-10 text-left text-xl opacity-80 hover:opacity-100 pointer-events-auto"><i class="fa-solid fa-tv"></i></button>
+            <div class="flex gap-4 font-bold text-sm pointer-events-auto">
+                <button class="text-gray-400 hover:text-white transition">フォロー中</button>
+                <span class="text-gray-600">|</span>
+                <button class="text-white border-b-2 border-white pb-0.5">おすすめ</button>
+            </div>
+            <button class="w-10 text-right text-xl opacity-80 hover:opacity-100 pointer-events-auto"><i class="fa-solid fa-magnifying-glass"></i></button>
+        </header>
+
+        <!-- 通知トースト -->
+        <div id="toast" class="absolute top-14 left-1/2 -translate-x-1/2 z-50 bg-pink-600/90 text-white text-xs px-4 py-2 rounded-full font-medium shadow-lg backdrop-blur-sm pointer-events-none hidden"></div>
+
+        <!-- 2 & 3. メインフィード -->
+        <main id="feed-container" class="flex-1 w-full h-full overflow-y-scroll snap-y-mandatory no-scrollbar relative bg-black"></main>
+
+        <!-- 質問A/B選択オーバーレイ -->
+        <div id="onboarding-overlay" class="absolute inset-x-4 bottom-20 z-40 bg-gray-900/95 border border-pink-500/40 rounded-2xl p-4 backdrop-blur-md shadow-2xl transition-all duration-300 hidden">
+            <div class="flex items-center gap-2 mb-2">
+                <span id="onboarding-step-badge" class="px-2 py-0.5 bg-gradient-to-r from-cyan-500 to-pink-500 rounded-full text-[10px] font-bold text-white"></span>
+                <h3 class="text-xs font-bold text-gray-300">投稿にどんなコメントをする？</h3>
+            </div>
+            <p id="onboarding-question-text" class="text-sm font-bold text-white mb-3"></p>
+            <div class="grid grid-cols-2 gap-2">
+                <button onclick="handleChoice('A')" class="py-2.5 px-3 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-xl text-xs font-bold text-cyan-300 active:scale-95 transition flex items-center justify-center gap-1">
+                    <span class="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center text-[10px]">A</span>
+                    <span id="choice-a-text"></span>
+                </button>
+                <button onclick="handleChoice('B')" class="py-2.5 px-3 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-xl text-xs font-bold text-pink-300 active:scale-95 transition flex items-center justify-center gap-1">
+                    <span class="w-5 h-5 rounded-full bg-pink-500/20 text-pink-400 flex items-center justify-center text-[10px]">B</span>
+                    <span id="choice-b-text"></span>
+                </button>
+            </div>
+        </div>
+
+        <!-- ボトムナビゲーション -->
+        <nav id="app-nav" class="h-14 bg-black border-t border-gray-900 flex items-center justify-around z-30 text-xs hidden">
+            <button class="flex flex-col items-center text-white gap-0.5"><i class="fa-solid fa-house text-lg"></i><span class="text-[10px]">レコメンド</span></button>
+            <button class="flex flex-col items-center text-gray-500 gap-0.5"><i class="fa-solid fa-user-group text-lg"></i><span class="text-[10px]">お友達</span></button>
+            <button class="flex flex-col items-center justify-center">
+                <div class="w-10 h-7 bg-cyan-400 rounded-lg flex items-center justify-center relative shadow-sm">
+                    <div class="absolute inset-0 bg-pink-500 rounded-lg translate-x-1"></div>
+                    <div class="relative w-9 h-7 bg-white rounded-md flex items-center justify-center text-black font-bold"><i class="fa-solid fa-plus text-xs"></i></div>
+                </div>
+            </button>
+            <button class="flex flex-col items-center text-gray-500 gap-0.5 relative">
+                <i class="fa-solid fa-message text-lg"></i><span class="text-[10px]">メッセージ</span>
+                <span class="absolute top-0 right-2 w-2 h-2 bg-pink-500 rounded-full"></span>
+            </button>
+            <button class="flex flex-col items-center text-gray-500 gap-0.5"><i class="fa-solid fa-user text-lg"></i><span class="text-[10px]">プロフィール</span></button>
+        </nav>
+
+        <!-- コメントドロワー -->
+        <div id="comment-drawer" class="absolute inset-x-0 bottom-0 z-50 bg-gray-900 rounded-t-2xl transform translate-y-full transition-transform duration-300 max-h-[60%] flex flex-col">
+            <div class="p-3 border-b border-gray-800 flex justify-between items-center">
+                <span id="comment-count-title" class="text-xs font-bold text-gray-300">コメント 0件</span>
+                <button onclick="toggleComments(null)" class="text-gray-400 hover:text-white p-1"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div id="comment-list" class="p-4 overflow-y-auto flex-1 space-y-3 no-scrollbar text-xs"></div>
+            <div class="p-3 border-t border-gray-800 flex items-center gap-2 bg-black">
+                <input type="text" id="new-comment-input" placeholder="コメントを追加..." class="flex-1 bg-gray-800 border border-gray-700 rounded-full px-4 py-2 text-xs text-white focus:outline-none focus:border-pink-500">
+                <button onclick="postUserComment()" class="text-pink-500 font-bold px-3 py-2 hover:text-pink-400">送信</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const $ = id => document.getElementById(id);
+        let currentUser = "", onboardingIndex = 0, postsData = [], currentCommentPostId = null;
+
+        const gradients = [
+            "from-purple-900 via-indigo-900 to-black", "from-blue-900 via-teal-900 to-black",
+            "from-red-900 via-pink-900 to-black", "from-amber-900 via-rose-900 to-black", "from-emerald-900 via-cyan-900 to-black"
+        ];
+
+        const onboardingSteps = [
+            { id: "ob-1", author: "@cat_cafe_official", avatar: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=100&q=80", bg: "from-amber-800 via-orange-950 to-black", icon: "fa-cat", title: "看板猫の「ルナ」が新しいベッドでお昼寝中🐱💤", music: "オリジナル楽曲 - Cat Life Beats", q: "可愛い寝顔のルナちゃんに一言かけるなら？", a: "癒やしをありがとう！❤️", b: "一緒に寝たい！😴", likes: 1240, bookmarks: 85, comments: [] },
+            { id: "ob-2", author: "@street_food_japan", avatar: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=100&q=80", bg: "from-red-900 via-amber-950 to-black", icon: "fa-bowl-food", title: "深夜の特製激辛ラーメン爆誕🍜🔥 全部召し上がれ！", music: "Midnight Ramen Club - Sound Track", q: "この激辛ラーメン、食べてみたい？", a: "スープまで完食したい！🍜", b: "辛そうで無理〜！辛党すごいお", likes: 3890, bookmarks: 310, comments: [] },
+            { id: "ob-3", author: "@tech_gadget_lab", avatar: "https://images.unsplash.com/photo-1531297484001-80022131f5a1?w=100&q=80", bg: "from-cyan-900 via-blue-950 to-black", icon: "fa-laptop-code", title: "未来のデスク環境がヤバすぎる！デスクツアー2026✨", music: "Cyberpunk Future Groove", q: "この未来派デスク、自分の部屋に欲しい？", a: "今すぐ真似したい！💻", b: "かっこいいけど目が疲れそう！笑", likes: 8540, bookmarks: 1420, comments: [] },
+            { id: "ob-4", author: "@dance_crew_tokyo", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&q=80", bg: "from-fuchsia-900 via-purple-950 to-black", icon: "fa-icons", title: "渋谷交差点でゲリラダンス踊ってみたブレイクダンスver🕺", music: "Tokyo Beat Drop - Remix", q: "このキレキレダンスパフォーマンスの評価は？", a: "キレ良すぎて鳥肌！✨", b: "ステップが凄すぎる！👏", likes: 12400, bookmarks: 980, comments: [] },
+            { id: "ob-5", author: "@event_info_japan", avatar: "https://images.unsplash.com/photo-1511578314322-379afb476865?w=100&q=80", bg: "from-indigo-900 via-slate-950 to-black", icon: "fa-calendar-check", title: "📢【重要告知】春の光のイルミネーションフェス、本日22時で終了！", music: "お知らせ BGM - Piano Memories", q: "イベント終了告知へのリアクションは？", a: "絶対また開催して！✨", b: "行けた人羨ましい〜！😭", likes: 5600, bookmarks: 450, comments: [] }
+        ];
+
+        const mockPool = [
+            { author: "@daily_vlog_ken", avatar: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=100&q=80", icon: "fa-mug-hot", title: "朝5時起きのモーニンングルティーン☕️ 今日も1日頑張ろう！", music: "Chill Morning Beats", comments: [{ user: "@sakura_01", text: "早起き尊敬します！" }] },
+            { author: "@event_announcement", avatar: "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=100&q=80", icon: "fa-bullhorn", title: "⚠️【終了告知】限定タイアップキャンペーンは本日23:59をもって終了します！", music: "Notice Official Audio", comments: [{ user: "@matsuri_fan", text: "滑り込みで参加しました！" }] },
+            { author: "@gamer_takuya", avatar: "https://images.unsplash.com/photo-1566492031773-4f4e44671857?w=100&q=80", icon: "fa-gamepad", title: "神引き連発！？新作アプリのガチャ100連引いてみた結果🎮", music: "8-bit Gaming Zone", comments: [{ user: "@luck_master", text: "引き強すぎて草" }] },
+            { author: "@travel_japan_life", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&q=80", icon: "fa-mountain-sun", title: "富士山頂からの絶景朝焼けをお届け🏔️☀️ パワーをお裾分け！", music: "Nature Horizon Sounds", comments: [{ user: "@hiker_yu", text: "綺麗すぎる..." }] },
+            { author: "@recipe_quick30", avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100&q=80", icon: "fa-utensils", title: "【爆速レシピ】3分でできる濃厚生チョコケーキの作り方🍫", music: "Sweet Cooking BGM", comments: [{ user: "@sweets_love", text: "今夜作ってみます！" }] }
+        ];
+
+        $('username-input').addEventListener('input', e => {
+            $('char-count').textContent = `${e.target.value.length}/10`;
+            $('error-msg').classList.add('hidden');
+        });
+
+        function handleRegister(e) {
+            e.preventDefault();
+            const val = $('username-input').value.trim();
+            if (!val || val.length > 10) {
+                $('error-msg').textContent = !val ? "ユーザー名を入力してください" : "10文字以内で入力してください";
+                return $('error-msg').classList.remove('hidden');
+            }
+            currentUser = val;
+            ['screen-register', 'app-header', 'app-nav'].forEach(id => $(id).classList.toggle('hidden'));
+            postsData = JSON.parse(JSON.stringify(onboardingSteps));
+            $('feed-container').innerHTML = postsData.map(createPostHTML).join('');
+            $('feed-container').style.overflowY = 'hidden';
+            updateOnboarding();
+        }
+
+        function updateOnboarding() {
+            if (onboardingIndex < 5) {
+                const s = onboardingSteps[onboardingIndex];
+                $('onboarding-step-badge').textContent = `質問 ${onboardingIndex + 1}/5`;
+                $('onboarding-question-text').textContent = s.q;
+                $('choice-a-text').textContent = s.a;
+                $('choice-b-text').textContent = s.b;
+                $('onboarding-overlay').classList.remove('hidden');
+                $(`post-${s.id}`)?.scrollIntoView({ behavior: 'smooth' });
+            } else {
+                $('onboarding-overlay').classList.add('hidden');
+                $('feed-container').style.overflowY = 'scroll';
+                showToast("回答完了！タイムラインの自動更新を開始します ✨");
+                setInterval(addAutoPost, 20000);
+            }
+        }
+
+        function handleChoice(choice) {
+            const s = onboardingSteps[onboardingIndex];
+            const post = postsData.find(p => p.id === s.id);
+            if (post) {
+                post.comments.unshift({ user: `@${currentUser}`, text: choice === 'A' ? s.a : s.b, isUser: true });
+                refreshPost(post);
+            }
+            onboardingIndex++;
+            updateOnboarding();
+        }
+
+        const esc = str => String(str || '').replace(/[&<>"']/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#039;' }[m]));
+        const fmt = n => n >= 10000 ? (n / 10000).toFixed(1) + '万' : n >= 1000 ? (n / 1000).toFixed(1) + 'k' : n;
+
+        function createPostHTML(p) {
+            const bg = p.bg || gradients[Math.floor(Math.random() * gradients.length)];
+            const topComment = p.comments?.[0] ? `<div class="bg-white/10 backdrop-blur-md rounded-lg p-2 text-[11px] border border-white/10"><span class="font-bold text-cyan-300">${esc(p.comments[0].user)}:</span> <span class="text-gray-200">${esc(p.comments[0].text)}</span></div>` : '';
+            return `
+            <div id="post-${p.id}" class="w-full h-full snap-start relative flex-shrink-0 bg-black flex flex-col justify-between overflow-hidden">
+                <div class="absolute inset-0 bg-gradient-to-br ${bg} flex items-center justify-center">
+                    <i class="fa-solid ${p.icon || 'fa-play'} text-9xl text-white opacity-20 scale-150"></i>
+                    <div class="absolute inset-0 flex items-center justify-center opacity-10"><div class="w-64 h-64 border-4 border-white rounded-full animate-ping"></div></div>
+                </div>
+                <div class="absolute inset-0 video-overlay pointer-events-none"></div>
+                <div class="relative z-10 pt-14 px-4 flex justify-between items-center text-xs opacity-80">
+                    <div class="flex items-center gap-2 bg-black/40 px-3 py-1 rounded-full backdrop-blur-md">
+                        <i class="fa-solid fa-music animate-spin-disc text-[10px] text-pink-400"></i>
+                        <span class="truncate max-w-[180px] text-[11px]">${esc(p.music || 'オリジナル音源')}</span>
+                    </div>
+                    <button onclick="this.querySelector('i').classList.toggle('fa-volume-high');this.querySelector('i').classList.toggle('fa-volume-xmark')" class="w-8 h-8 rounded-full bg-black/40 flex items-center justify-center backdrop-blur-md text-white">
+                        <i class="fa-solid fa-volume-high text-xs"></i>
+                    </button>
+                </div>
+                <div class="absolute inset-0 z-0" onclick="toggleStat('${p.id}', 'like')"></div>
+                <div class="relative z-10 p-4 pb-6 flex items-end justify-between gap-4 pointer-events-none">
+                    <div class="flex-1 text-white space-y-2 pointer-events-auto">
+                        <div class="flex items-center gap-2">
+                            <img src="${p.avatar}" class="w-9 h-9 rounded-full border border-pink-500 object-cover" onerror="this.src='https://placehold.co/100x100/333/fff?text=User'">
+                            <span class="font-bold text-sm drop-shadow-md">${esc(p.author)}</span>
+                            <button class="text-[10px] bg-pink-600 hover:bg-pink-500 font-bold px-2.5 py-0.5 rounded-full">フォロー</button>
+                        </div>
+                        <p class="text-xs leading-relaxed drop-shadow line-clamp-3 text-gray-100">${esc(p.title)}</p>
+                        ${topComment}
+                    </div>
+                    <div class="flex flex-col items-center gap-4 pointer-events-auto text-white">
+                        <div class="relative mb-1">
+                            <img src="${p.avatar}" class="w-10 h-10 rounded-full border-2 border-white object-cover" onerror="this.src='https://placehold.co/100x100/333/fff?text=User'">
+                            <div class="absolute -bottom-1 left-1/2 -translate-x-1/2 w-4 h-4 bg-pink-500 rounded-full flex items-center justify-center text-[10px]"><i class="fa-solid fa-plus"></i></div>
+                        </div>
+                        <button onclick="toggleStat('${p.id}', 'like')" class="flex flex-col items-center">
+                            <div id="like-btn-${p.id}" class="w-10 h-10 rounded-full flex items-center justify-center transition ${p.liked ? 'text-pink-500' : 'text-white'}"><i class="fa-solid fa-heart text-2xl drop-shadow"></i></div>
+                            <span id="like-count-${p.id}" class="text-[11px] font-bold mt-0.5">${fmt(p.likes)}</span>
+                        </button>
+                        <button onclick="toggleComments('${p.id}')" class="flex flex-col items-center">
+                            <div class="w-10 h-10 rounded-full flex items-center justify-center"><i class="fa-solid fa-comment-dots text-2xl drop-shadow"></i></div>
+                            <span class="text-[11px] font-bold mt-0.5">${p.comments.length}</span>
+                        </button>
+                        <button onclick="toggleStat('${p.id}', 'bookmark')" class="flex flex-col items-center">
+                            <div id="bookmark-btn-${p.id}" class="w-10 h-10 rounded-full flex items-center justify-center transition ${p.bookmarked ? 'text-yellow-400' : 'text-white'}"><i class="fa-solid fa-bookmark text-2xl drop-shadow"></i></div>
+                            <span id="bookmark-count-${p.id}" class="text-[11px] font-bold mt-0.5">${fmt(p.bookmarks)}</span>
+                        </button>
+                        <button onclick="showToast('リンクをクリップボードにコピーしました！')" class="flex flex-col items-center">
+                            <div class="w-10 h-10 rounded-full flex items-center justify-center"><i class="fa-solid fa-share text-2xl drop-shadow"></i></div>
+                            <span class="text-[11px] font-bold mt-0.5">シェア</span>
+                        </button>
+                        <div class="w-9 h-9 rounded-full bg-gray-900 border-2 border-gray-700 flex items-center justify-center animate-spin-disc mt-1"><div class="w-3 h-3 rounded-full bg-pink-500"></div></div>
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        function refreshPost(post) {
+            const el = $(`post-${post.id}`);
+            if (el) el.outerHTML = createPostHTML(post);
+        }
+
+        function toggleStat(id, type) {
+            const p = postsData.find(x => x.id === id);
+            if (!p) return;
+            const isLike = type === 'like', key = isLike ? 'liked' : 'bookmarked', countKey = isLike ? 'likes' : 'bookmarks';
+            p[key] = !p[key];
+            p[countKey] += p[key] ? 1 : -1;
+            const btn = $(`${type}-btn-${id}`), activeColor = isLike ? 'text-pink-500' : 'text-yellow-400';
+            $(`${type}-count-${id}`).textContent = fmt(p[countKey]);
+            btn.classList.toggle('text-white', !p[key]);
+            btn.classList.toggle(activeColor, p[key]);
+            if (p[key] && isLike) { btn.classList.add('animate-heart'); setTimeout(() => btn.classList.remove('animate-heart'), 300); }
+            if (p[key] && !isLike) showToast("ブックマークに保存しました");
+        }
+
+        function toggleComments(id) {
+            currentCommentPostId = id;
+            const drawer = $('comment-drawer');
+            if (!id) return drawer.classList.add('translate-y-full');
+            const p = postsData.find(x => x.id === id);
+            $('comment-count-title').textContent = `コメント ${p.comments.length}件`;
+            $('comment-list').innerHTML = p.comments.length ? p.comments.map(c => `
+                <div class="flex items-start gap-2 text-xs">
+                    <div class="w-6 h-6 rounded-full ${c.isUser ? 'bg-gradient-to-r from-pink-500 to-cyan-500' : 'bg-gray-700'} flex items-center justify-center font-bold text-[10px]">${esc(c.user[1] || 'U').toUpperCase()}</div>
+                    <div class="flex-1"><div class="font-bold text-gray-400">${esc(c.user)}</div><div class="text-white mt-0.5">${esc(c.text)}</div></div>
+                </div>`).join('') : `<p class="text-center text-gray-500 my-4">最初のコメントを書き込もう！</p>`;
+            drawer.classList.remove('translate-y-full');
+        }
+
+        function postUserComment() {
+            const input = $('new-comment-input'), val = input.value.trim();
+            if (!currentCommentPostId || !val) return;
+            const p = postsData.find(x => x.id === currentCommentPostId);
+            p.comments.unshift({ user: `@${currentUser}`, text: val, isUser: true });
+            input.value = '';
+            refreshPost(p);
+            toggleComments(currentCommentPostId);
+        }
+
+        function addAutoPost() {
+            const item = mockPool[Math.floor(Math.random() * mockPool.length)];
+            const newPost = { ...item, id: `auto-${Date.now()}`, bg: gradients[Math.floor(Math.random() * gradients.length)], likes: Math.floor(Math.random() * 500) + 10, bookmarks: Math.floor(Math.random() * 50) + 2, comments: [...item.comments] };
+            postsData.push(newPost);
+            $('feed-container').insertAdjacentHTML('beforeend', createPostHTML(newPost));
+            showToast(`新しい投稿が追加されました (${newPost.author})`);
+        }
+
+        function showToast(msg) {
+            const t = $('toast');
+            t.textContent = msg;
+            t.classList.remove('hidden', 'toast-animate');
+            void t.offsetWidth;
+            t.classList.add('toast-animate');
+            setTimeout(() => t.classList.add('hidden'), 2500);
+        }
+    </script>
+</body>
+</html>
